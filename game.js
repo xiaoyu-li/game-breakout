@@ -1,6 +1,16 @@
+/**
+ * set as global variable for now
+ */
+var brickRowCount = 3;
+var brickColumnCount = 5;
+var brickWidth = 75;
+var brickHeight = 20;
+var brickPadding = 10;
+var brickOffsetTop = 30;
+var brickOffsetLeft = 5;
+
 var Game = Game || {};
 Game.End = function() {
-  console.log('here');
   alert('You Lose');
   window.location.reload();
 };
@@ -29,13 +39,15 @@ Game.Event = {
 Game.Component = {
   Stage: {},
   Paddle: {
-    create: function(x, y, w, h, speed, color) {
-      this.x = x;
-      this.y = y;
-      this.w = w;
-      this.h = h;
-      this.speed = speed;
-      this.color = color || 'black';
+    create: function(x = 50, y = 380, w = 50, h = 20, speed = 10, color = 'black') {
+      var paddle = Object.create(this);
+      paddle.x = x;
+      paddle.y = y;
+      paddle.w = w;
+      paddle.h = h;
+      paddle.speed = speed;
+      paddle.color = color;
+      return paddle;
     },
     changeSpeed: function(newSpeed) {
       paddle.speed = newSpeed;
@@ -47,38 +59,76 @@ Game.Component = {
       this.x += this.speed;
     }
   },
+
   Ball: {
-    create: function(x, y, dx, dy, r, color) {
-      this.x = x;
-      this.y = y;
-      this.dx = dx;
-      this.dy = dy;
-      this.r = r;
-      this.color = color || 'black';
+    create: function(x = 50, y = 50, dx = 2, dy = 3, r = 10, color = 'red') {
+      var ball = Object.create(this);
+      ball.x = x;
+      ball.y = y;
+      ball.dx = dx;
+      ball.dy = dy;
+      ball.r = r;
+      ball.color = color || 'black';
+      return ball;
     },
     move: function() {
       this.x += this.dx;
       this.y += this.dy;
     },
-    collisionDetect: function(canvasW, canvasH, paddleX, paddleY, paddleW) {
+    collisionDetect: function(canvasW, canvasH, paddleX, paddleY, paddleW, bricks) {
+      //ball reach bottom of canvas
       if (this.y > canvasH) {
-        console.log('123');
         Game.End();
       }
+      //ball react top,right,left side of canvas
       if (this.x > canvasW || this.x < 0) {
         this.dx = -this.dx;
       } else if (this.y < 0) {
         this.dy = -this.dy;
       }
 
+      //ball reach paddle
       if (this.y > canvasH - (canvasH - paddleY)) {
         if (this.x > paddleX && this.x < paddleX + paddleW) {
           this.dy = -this.dy;
         }
       }
+
+      for (c = 0; c < brickColumnCount; c++) {
+        for (r = 0; r < brickRowCount; r++) {
+          var b = bricks[c][r];
+          if (b.alive) {
+            if (
+              this.x > b.x &&
+              this.x < b.x + brickWidth &&
+              this.y > b.y &&
+              this.y < b.y + brickHeight
+            ) {
+              this.dy = -this.dy;
+              b.kill();
+            }
+          }
+        }
+      }
+
+      //ball reach brick
     }
   },
-  Brick: {}
+  Brick: {
+    alive: true,
+    create: function(x, y, w, h, color) {
+      var brick = Object.create(this);
+      brick.x = x;
+      brick.y = y;
+      brick.w = w;
+      brick.h = h;
+      brick.color = color || 'black';
+      return brick;
+    },
+    kill: function() {
+      this.alive = false;
+    }
+  }
 };
 
 /**
@@ -89,12 +139,23 @@ Game.Component = {
 Game.Action = {
   canvas: document.getElementById('canvas'),
   ctx: canvas.getContext('2d'),
-  paddle: new Game.Component.Paddle.create(0, 0, 30, 30, 'red', 10),
+
   Init: function() {
-    this.ball = Object.create(Game.Component.Ball);
-    this.ball.create(50, 50, 3, -3, 10, 'blue');
-    this.paddle = Object.create(Game.Component.Paddle);
-    this.paddle.create(50, 350, 50, 20, 5, 'red');
+    this.ball = Game.Component.Ball.create();
+    this.paddle = Game.Component.Paddle.create();
+
+    this.bricks = [];
+    for (let c = 0; c < brickColumnCount; c++) {
+      this.bricks[c] = [];
+      for (let r = 0; r < brickRowCount; r++) {
+        this.bricks[c][r] = Game.Component.Brick.create(
+          c * (brickWidth + brickPadding) + brickOffsetLeft,
+          r * (brickHeight + brickPadding) + brickOffsetTop,
+          50,
+          20
+        );
+      }
+    }
 
     Game.Event.RegisterAction('a', () => {
       this.paddle.moveLeft();
@@ -106,18 +167,30 @@ Game.Action = {
       this.Stop();
     });
   },
+
   Draw: function() {
     this.Clear();
     this.ctx.beginPath();
     this.ctx.arc(this.ball.x, this.ball.y, this.ball.r, 0, Math.PI * 2, true);
     this.ctx.stroke();
-    this.ctx.fillRect(
-      this.paddle.x,
-      this.paddle.y,
-      this.paddle.w,
-      this.paddle.h
-    );
+    this.ctx.fillRect(this.paddle.x, this.paddle.y, this.paddle.w, this.paddle.h);
+
+    //draw bricks
+    for (let c = 0; c < brickColumnCount; c++) {
+      for (let r = 0; r < brickRowCount; r++) {
+        if (this.bricks[c][r].alive) {
+          this.ctx.fillRect(
+            this.bricks[c][r].x,
+            this.bricks[c][r].y,
+            this.bricks[c][r].w,
+            this.bricks[c][r].h
+          );
+        }
+      }
+    }
+
     this.ctx.closePath();
+
     this.ball.move();
   },
   Clear: function() {
@@ -137,7 +210,8 @@ Game.Action = {
       this.canvas.height,
       this.paddle.x,
       this.paddle.y,
-      this.paddle.w
+      this.paddle.w,
+      this.bricks
     );
     this.Draw();
 
